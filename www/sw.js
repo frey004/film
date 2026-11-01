@@ -1,9 +1,9 @@
 // Offline support for the web/PWA version: serve the app shell from the
 // cache and refresh it in the background.
-const CACHE = 'montaje-v1';
+const CACHE = 'montaje-v2';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
-  'js/app.js', 'js/db.js', 'js/engine.js', 'js/media.js', 'js/model.js', 'js/timeline.js', 'js/ui.js', 'js/util.js',
+  'js/app.js', 'js/cloud.js', 'js/db.js', 'js/engine.js', 'js/media.js', 'js/model.js', 'js/timeline.js', 'js/ui.js', 'js/util.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 

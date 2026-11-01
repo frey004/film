@@ -158,7 +158,8 @@ function attachRuntime(rec) {
 }
 
 /** Stores a picked file in the project and returns the asset. */
-export async function importFile(projectId, file) {
+/** extra: optional fields stored with the asset (e.g. credit for cloud sounds). */
+export async function importFile(projectId, file, extra = {}) {
   const kind = kindOf(file);
   if (!kind) throw new Error(`Formato no compatible: ${file.name}`);
   const url = URL.createObjectURL(file);
@@ -174,6 +175,7 @@ export async function importFile(projectId, file) {
     id: uid(), projectId, kind, name: file.name, type: file.type,
     duration: meta.duration, width: meta.width, height: meta.height,
     thumb: meta.thumb, wave: null, blob: file, addedAt: Date.now(),
+    ...extra,
   };
   await db.putMedia(rec);
   const asset = attachRuntime(rec);

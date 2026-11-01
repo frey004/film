@@ -262,6 +262,16 @@ input[type=color] { width: 44px; height: 36px; border: 0; background: none; padd
 .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
 .note { color: var(--muted); font-size: 13px; margin: 8px 0; }
 
+.cloud-list { display: flex; flex-direction: column; }
+.cloud-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cloud-info { flex: 1; min-width: 0; }
+.cloud-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cloud-meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cloud-row .primary-btn { padding: 8px 12px; font-size: 13px; }
+input[type=search] {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; -webkit-appearance: none;
+}
+
 #toast {
   position: fixed; left: 50%; bottom: calc(110px + var(--sab)); transform: translateX(-50%) translateY(20px);
   background: #000d; color: #fff; padding: 10px 16px; border-radius: 20px; font-size: 14px;

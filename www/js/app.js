@@ -4,6 +4,7 @@ import * as M from './model.js';
 import { Engine, pickMimeType, canFilter } from './engine.js';
 import { Timeline } from './timeline.js';
 import * as ui from './ui.js';
+import * as cloud from './cloud.js';
 import { $, h, icon, fmtTime, fmtDate, debounce, clamp, isNative, platform, nativeCall, uid } from './util.js';
 
 const app = {
@@ -299,6 +300,7 @@ function renderToolbar() {
       tool('add', 'Añadir', () => pickAndImport('video/*,image/*', 'main')),
       tool('folder', 'Medios', openBin),
       tool('music', 'Audio', () => pickAndImport('audio/*', 'audio')),
+      tool('cloud', 'Sonidos', () => cloudSheet()),
       tool('text', 'Texto', addText),
       tool('aspect', 'Formato', formatSheet),
       tool('layers', 'Pistas', tracksSheet),
@@ -728,6 +730,7 @@ function openMonitor(asset) {
     ui.toast(`${how === 'insert' ? 'Insertado' : how === 'overwrite' ? 'Sobrescrito' : 'Añadido'} en ${target.name} · ${fmtTime(clip.start)}`);
   };
   const body = h('div', null, monitor, marks,
+    asset.credit && h('p.note', null, cloud.creditLine(asset.credit)),
     tracks.length > 1 && h('div.field', null, h('label', null, 'Pista de destino'),
       ui.chips(tracks.map((t) => [t.id, t.name]), target && target.id, (id) => (target = tracks.find((t) => t.id === id)))),
     h('div.row', null,
@@ -907,13 +910,130 @@ function showResult(blob, ext) {
     }
     actions.append(h('a.secondary-btn', { href: url, download: name, style: { textDecoration: 'none' } }, 'Descargar'));
   }
+  const credits = projectCredits();
+  const creditBox = credits.length ? h('div', null,
+    h('p.note', null, 'Créditos de los sonidos usados (su licencia pide nombrar al autor, por ejemplo en la descripción del vídeo):'),
+    h('p.note', { style: { whiteSpace: 'pre-wrap', userSelect: 'text', webkitUserSelect: 'text', color: 'var(--text)' } }, credits.join('\n')),
+    h('button.secondary-btn', { onclick: () => {
+      navigator.clipboard?.writeText(credits.join('\n')).then(() => ui.toast('Créditos copiados'), () => ui.toast('No se pudieron copiar'));
+    } }, 'Copiar créditos')) : null;
   const video = h('video', { src: url, controls: true, playsInline: true });
   video.setAttribute('playsinline', '');
   ui.openSheet('Vídeo listo', h('div.export-view', null, video,
-    h('p.note', null, `${name} · ${mb} MB`), actions,
+    h('p.note', null, `${name} · ${mb} MB`), actions, creditBox,
     platform() === 'ios' || /iPhone|iPad/.test(navigator.userAgent)
       ? h('p.note', null, 'En el menú de compartir, elige «Guardar vídeo» para llevarlo a Fotos.') : null),
   { onClose: () => { video.pause(); setTimeout(() => URL.revokeObjectURL(url), 60000); } });
+}
+
+/** Credit lines for the cloud sounds used in the project that ask for one. */
+function projectCredits() {
+  const ids = new Set();
+  for (const t of app.project.tracks) for (const c of t.clips) if (c.mediaId) ids.add(c.mediaId);
+  return [...ids].map((id) => media.getAsset(id)).filter((a) => a && a.credit && cloud.needsCredit(a.credit.license))
+    .map((a) => cloud.creditLine(a.credit));
+}
+
+// ---- cloud sounds (Openverse) ------------------------------------------------
+
+const cloudState = { q: '', category: '', page: 1, pages: 1, results: [], added: new Set() };
+let previewAudio = null;
+
+function stopPreview() {
+  if (previewAudio) { previewAudio.pause(); previewAudio.removeAttribute('src'); previewAudio.load(); }
+  previewAudio = null;
+}
+
+function cloudSheet() {
+  const st = cloudState;
+  const input = h('input', { type: 'search', value: st.q, placeholder: 'Busca: lluvia, aplausos, piano, épica…', enterkeyhint: 'search' });
+  const list = h('div.cloud-list');
+  const more = h('button.secondary-btn', { style: { width: '100%', marginTop: '10px' } }, 'Más resultados');
+  const status = h('p.note');
+  let playingBtn = null;
+
+  const run = async (page = 1) => {
+    const q = input.value.trim();
+    if (!q) return input.focus();
+    input.blur();
+    st.q = q;
+    status.textContent = 'Buscando…';
+    if (page === 1) { list.textContent = ''; st.results = []; }
+    more.classList.add('hidden');
+    try {
+      const { results, pages } = await cloud.search(q, { category: st.category, page });
+      st.page = page;
+      st.pages = pages;
+      st.results.push(...results);
+      results.forEach((r) => list.append(row(r)));
+      status.textContent = st.results.length ? '' : 'Sin resultados. Prueba con otras palabras (en inglés suele haber más).';
+      more.classList.toggle('hidden', page >= pages || !results.length);
+    } catch (e) {
+      status.textContent = e.message || String(e);
+    }
+  };
+  more.onclick = () => run(st.page + 1);
+  input.addEventListener('keydown', (e) => e.key === 'Enter' && run(1));
+
+  const row = (r) => {
+    const play = h('button.icon-btn.small', { 'aria-label': 'Escuchar' }, icon('play', 22));
+    play.onclick = () => {
+      const was = playingBtn === play;
+      stopPreview();
+      if (playingBtn) { playingBtn.textContent = ''; playingBtn.append(icon('play', 22)); }
+      playingBtn = null;
+      if (was) return;
+      previewAudio = new Audio(r.url);
+      previewAudio.play().catch(() => ui.toast('No se puede reproducir este sonido aquí'));
+      previewAudio.onended = () => { play.textContent = ''; play.append(icon('play', 22)); playingBtn = null; };
+      play.textContent = '';
+      play.append(icon('pause', 22));
+      playingBtn = play;
+    };
+    const add = h('button.primary-btn', null, st.added.has(r.id) ? 'Añadido' : 'Añadir');
+    add.onclick = async () => {
+      if (add.disabled) return;
+      add.disabled = true;
+      add.textContent = 'Descargando…';
+      try {
+        const file = await cloud.download(r);
+        const p = app.project;
+        const asset = await media.importFile(p.id, file, {
+          credit: { title: r.title, creator: r.creator, license: r.license, licenseVersion: r.licenseVersion, source: r.source, page: r.page },
+        });
+        if (app.project !== p) return;
+        app.commit();
+        const clip = clipFromAsset(asset);
+        const track = placeFree('audio', clip, app.engine.t);
+        app.changed();
+        st.added.add(r.id);
+        add.textContent = 'Añadido';
+        ui.toast(`Añadido en ${track.name} · ${fmtTime(clip.start)}`);
+      } catch (e) {
+        add.textContent = 'Añadir';
+        ui.toast(e.message || String(e), 4500);
+      } finally {
+        add.disabled = false;
+      }
+    };
+    const warn = cloud.nonCommercial(r.license) ? ' · sin uso comercial' : '';
+    return h('div.cloud-row', null, play,
+      h('div.cloud-info', null,
+        h('div.cloud-title', null, r.title),
+        h('div.cloud-meta', null, `${r.creator} · ${r.duration ? fmtTime(r.duration, false) + ' · ' : ''}${cloud.licenseName(r)}${warn}`)),
+      add);
+  };
+
+  const body = h('div', null,
+    h('div.row', { style: { flexWrap: 'nowrap' } }, input, h('button.primary-btn', { onclick: () => run(1) }, 'Buscar')),
+    h('div.field', null, ui.chips(cloud.CATEGORIES, st.category, (v) => { st.category = v; if (input.value.trim()) run(1); })),
+    status, list, more,
+    h('p.note', null, 'Música y efectos con licencia libre (Creative Commons y dominio público) de Jamendo, Freesound, Wikimedia y otras fuentes, a través de Openverse. ',
+      'Las licencias «BY» piden nombrar al autor: Montaje te da el texto de créditos al exportar. Las marcadas «sin uso comercial» no sirven para vídeos monetizados.'));
+  st.results.forEach((r) => list.append(row(r)));
+  more.classList.toggle('hidden', !st.results.length || st.page >= st.pages);
+  ui.openSheet('Sonidos en la nube', body, { onClose: stopPreview });
+  if (!st.results.length) setTimeout(() => input.focus(), 80);
 }
 
 function blobToBase64(blob) {

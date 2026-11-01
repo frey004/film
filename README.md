@@ -31,6 +31,7 @@ Cada push también deja el APK y el IPA en la pestaña **Actions** como artefact
   - eliminar, o eliminar y cerrar el hueco.
 - **Ajuste y animación con fotogramas clave**: escala, posición, rotación y opacidad. Toca ◆ para crear un fotograma clave, mueve el cursor y cambia el valor: Montaje interpola entre ellos con suavizado. En la vista previa puedes arrastrar el clip para moverlo y pellizcar para cambiar su tamaño.
 - **Color**: brillo, contraste, saturación y sepia, con estilos (Vívido, B/N, Vintage, Cine).
+- **Sonidos en la nube**: busca música y efectos con licencia libre (Creative Commons y dominio público) de Jamendo, Freesound, Wikimedia y otras fuentes a través de [Openverse](https://openverse.org). Puedes escucharlos antes y añadirlos con un toque. Al exportar, Montaje te da el texto de créditos que piden sus licencias.
 - **Textos** con tamaño, color, contorno y fondo.
 - **Pistas**: silenciar, ocultar, subir, bajar y añadir o eliminar pistas.
 - **Deshacer y rehacer** (hasta 80 pasos) y guardado automático.
