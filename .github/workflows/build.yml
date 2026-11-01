@@ -149,8 +149,7 @@ jobs:
     needs: [android, ios]
     if: >-
       github.event_name != 'pull_request' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
-      needs.android.outputs.signed == 'true'
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -162,13 +161,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.android.outputs.version }}
+          SIGNED: ${{ needs.android.outputs.signed }}
         run: |
+          # The iOS file is always published. The APK is only published when
+          # it was signed with the release key (SIGNING_PASSWORD secret), so
+          # every published APK can be updated in place by the next one.
           TAG="v$VERSION"
+          FILES="dist/Montaje-unsigned.ipa"
+          [ "$SIGNED" = "true" ] && FILES="$FILES dist/Montaje.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists, nothing to publish"
+            # Add the APK to an iOS-only release once the secret is set.
+            if [ "$SIGNED" = "true" ] && ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx Montaje.apk; then
+              gh release upload "$TAG" dist/Montaje.apk
+            else
+              echo "Release $TAG already exists, nothing to publish"
+            fi
             exit 0
           fi
-          gh release create "$TAG" dist/Montaje.apk dist/Montaje-unsigned.ipa \
+          gh release create "$TAG" $FILES \
             --target "$GITHUB_SHA" \
             --title "Montaje $VERSION" \
             --notes "Montaje $VERSION · Android: instala Montaje.apk. iPhone/iPad: instala Montaje-unsigned.ipa con AltStore o Sideloadly, o usa la versión web."

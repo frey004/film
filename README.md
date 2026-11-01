@@ -80,7 +80,7 @@ Las carpetas `android/` e `ios/` no se guardan en el repositorio: GitHub Actions
 
 ### Firma del APK
 
-Para que cada versión se instale encima de la anterior, todas se firman con la misma clave. La clave está cifrada en `signing/release.jks.enc` (la misma que usa NekoPlay en `frey004/Nuevo`). GitHub Actions la descifra con el secreto **`SIGNING_PASSWORD`** (*Settings → Secrets and variables → Actions*; usa el mismo valor que en el repositorio Nuevo). Sin ese secreto, el APK se firma con una clave desechable y no se publica ninguna Release.
+Para que cada versión se instale encima de la anterior, todas se firman con la misma clave. La clave está cifrada en `signing/release.jks.enc` (la misma que usa NekoPlay en `frey004/Nuevo`). GitHub Actions la descifra con el secreto **`SIGNING_PASSWORD`** (*Settings → Secrets and variables → Actions*; usa el mismo valor que en el repositorio Nuevo). Sin ese secreto, la Release se publica solo con el archivo de iOS, y el APK queda únicamente en la pestaña **Actions**, firmado con una clave desechable. En cuanto añadas el secreto, el siguiente push sube el APK a la misma Release.
 
 ## Limitaciones
 
