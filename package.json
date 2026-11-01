@@ -1,0 +1,23 @@
+{
+  "name": "montaje",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Montaje: editor de vídeo multipista para Android e iOS",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.6.0"
+  },
+  "type": "module"
+}

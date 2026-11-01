@@ -1,0 +1,174 @@
+name: Build (Android, iOS y web)
+
+# Builds Montaje for Android (APK) and iOS (unsigned IPA for sideloading),
+# and publishes the web version (PWA) to GitHub Pages. When package.json
+# holds a version without a release, a GitHub Release "vX.Y.Z" is created
+# with both files attached.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Version
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          IFS=. read -r MA MI PA <<< "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "CODE=$(( MA * 10000 + MI * 100 + PA ))" >> "$GITHUB_ENV"
+
+      - name: Create the Android project
+        run: |
+          npm ci
+          npx cap add android
+          npx @capacitor/assets generate --android \
+            --iconBackgroundColor '#5b8cff' --iconBackgroundColorDark '#5b8cff' \
+            --splashBackgroundColor '#101114' --splashBackgroundColorDark '#101114'
+          sed -i "s/versionCode 1$/versionCode $CODE/; s/versionName \"1.0\"/versionName \"$VERSION\"/" android/app/build.gradle
+          npx cap sync android
+
+      - name: Build
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Sign
+        id: sign
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          mkdir -p build
+          "$BT/zipalign" -f -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk build/aligned.apk
+          if [ -n "$SIGNING_PASSWORD" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in signing/release.jks.enc -out build/release.jks -pass env:SIGNING_PASSWORD
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::SIGNING_PASSWORD is not set: the APK is signed with a throwaway key and no release is published"
+            keytool -genkeypair -keystore build/release.jks -storepass nekoplay -alias nekoplay -keypass nekoplay \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Montaje" >/dev/null
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          "$BT/apksigner" sign --ks build/release.jks --ks-pass pass:nekoplay --ks-key-alias nekoplay --key-pass pass:nekoplay \
+            --out build/Montaje.apk build/aligned.apk
+          "$BT/apksigner" verify build/Montaje.apk
+          rm -f build/release.jks
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Montaje-android
+          path: build/Montaje.apk
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Create the iOS project
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          IFS=. read -r MA MI PA <<< "$VERSION"
+          npm ci
+          npx cap add ios
+          npx @capacitor/assets generate --ios \
+            --iconBackgroundColor '#5b8cff' --splashBackgroundColor '#101114' --splashBackgroundColorDark '#101114'
+          PLIST=ios/App/App/Info.plist
+          set_key() { /usr/libexec/PlistBuddy -c "Delete :$1" "$PLIST" 2>/dev/null || true; /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$PLIST"; }
+          set_key NSPhotoLibraryUsageDescription "Montaje necesita acceder a tus fotos y vídeos para que puedas editarlos."
+          set_key NSPhotoLibraryAddUsageDescription "Montaje guarda en Fotos los vídeos que exportas."
+          set_key NSCameraUsageDescription "Montaje usa la cámara para grabar clips nuevos."
+          set_key NSMicrophoneUsageDescription "Montaje usa el micrófono al grabar clips con sonido."
+          sed -i '' "s/MARKETING_VERSION = 1.0;/MARKETING_VERSION = $VERSION;/; s/CURRENT_PROJECT_VERSION = 1;/CURRENT_PROJECT_VERSION = $(( MA * 10000 + MI * 100 + PA ));/" ios/App/App.xcodeproj/project.pbxproj
+          npx cap sync ios
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p build/Payload
+          cp -R build/ios/Build/Products/Release-iphoneos/App.app build/Payload/
+          (cd build && zip -qr Montaje-unsigned.ipa Payload)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Montaje-ios
+          path: build/Montaje-unsigned.ipa
+
+  web:
+    # GitHub Pages must be set to "GitHub Actions" in Settings -> Pages.
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    needs: [android, ios]
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.android.outputs.signed == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.android.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, nothing to publish"
+            exit 0
+          fi
+          gh release create "$TAG" dist/Montaje.apk dist/Montaje-unsigned.ipa \
+            --target "$GITHUB_SHA" \
+            --title "Montaje $VERSION" \
+            --notes "Montaje $VERSION · Android: instala Montaje.apk. iPhone/iPad: instala Montaje-unsigned.ipa con AltStore o Sideloadly, o usa la versión web."
