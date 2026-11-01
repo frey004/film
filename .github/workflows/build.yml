@@ -68,11 +68,11 @@ jobs:
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::SIGNING_PASSWORD is not set: the APK is signed with a throwaway key and no release is published"
-            keytool -genkeypair -keystore build/release.jks -storepass nekoplay -alias nekoplay -keypass nekoplay \
+            keytool -genkeypair -keystore build/release.jks -storepass montaje -alias montaje -keypass montaje \
               -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Montaje" >/dev/null
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
-          "$BT/apksigner" sign --ks build/release.jks --ks-pass pass:nekoplay --ks-key-alias nekoplay --key-pass pass:nekoplay \
+          "$BT/apksigner" sign --ks build/release.jks --ks-pass pass:montaje --ks-key-alias montaje --key-pass pass:montaje \
             --out build/Montaje.apk build/aligned.apk
           "$BT/apksigner" verify build/Montaje.apk
           rm -f build/release.jks
